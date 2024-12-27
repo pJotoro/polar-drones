@@ -18,6 +18,90 @@ png_load :: proc($path: string) -> (^png.Image, png.Error) {
 	return png.load_from_bytes(data)
 }
 
+Entity_State :: enum {
+	Idle,
+	Walk,
+}
+
+Entity :: struct {
+	x: f32,
+	vel: f32,
+	flip: bool,
+	tick: f32,
+	frame: int,
+	state: Entity_State,
+	sprite: ^png.Image,
+}
+
+POLAR_BEAR_Y :: 0.0
+POLAR_BEAR_FRAME_WIDTH :: 32
+POLAR_BEAR_FRAME_HEIGHT :: 32
+POLAR_BEAR_FRAME_TIME :: 0.25
+POLAR_BEAR_FRAME_COUNT_IDLE :: 3
+POLAR_BEAR_FRAME_COUNT_WALK :: 4
+
+player_init :: proc(using player: ^Entity, s: ^png.Image) {
+	sprite = s
+	x = f32(GAME_WIDTH/2 - POLAR_BEAR_FRAME_WIDTH/2)
+}
+
+player_update :: proc(using player: ^Entity, dt: f32) {
+	left_stick: [2]f32
+	if app.gamepad_connected(0) {
+		left_stick = app.gamepad_left_stick(0)
+	} else {
+		left_stick.x -= f32(i32(app.key_down(.Left)))
+		left_stick.x += f32(i32(app.key_down(.Right)))
+		left_stick.y -= f32(i32(app.key_down(.Down)))
+		left_stick.y += f32(i32(app.key_down(.Up)))
+	}
+
+	if left_stick.x > 0.0 {
+		flip = false
+	} else if left_stick.x < 0.0 {
+		flip = true
+	}
+
+	if left_stick.x == 0 && state != .Idle {
+		state = .Idle
+		tick = 0
+		frame = 0
+	} else if left_stick.x != 0 && state != .Walk {
+		state = .Walk
+		tick = 0
+		frame = 0
+	}
+
+	tick += abs(left_stick.x)*dt if left_stick.x != 0.0 else dt
+	if tick > POLAR_BEAR_FRAME_TIME {
+		tick = 0
+		frame += 1
+		frame_count: int
+		switch state {
+			case .Idle:
+				frame_count = POLAR_BEAR_FRAME_COUNT_IDLE
+			case .Walk:
+				frame_count = POLAR_BEAR_FRAME_COUNT_WALK
+		}
+		if frame >= frame_count {
+			frame = 0
+		}
+	}
+
+	VEL_X :: 10.0
+
+	x += left_stick.x*VEL_X*dt
+}
+
+player_draw :: proc(backbuffer: []u32, using player: ^Entity) {
+	switch state {
+		case .Idle:
+			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, sprite, frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+		case .Walk:
+			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, sprite, POLAR_BEAR_FRAME_COUNT_IDLE*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+	}
+}
+
 main :: proc() {
 	spall_init("spall")
 	defer spall_uninit()
@@ -32,19 +116,15 @@ main :: proc() {
 
 	// https://rapidpunches.itch.io/polar-bear
 	polar_bear, err := png_load("sprites/polar_bear.png")
-	POLAR_BEAR_FRAME_WIDTH :: 32
-	POLAR_BEAR_FRAME_HEIGHT :: 32
-	POLAR_BEAR_FRAME_TIME :: 0.25
-	POLAR_BEAR_IDLE_FRAME_COUNT :: 3
-	POLAR_BEAR_WALK_FRAME_COUNT :: 4
+	assert(err == nil)
 
 	max_dt := 1.0/f32(app.refresh_rate())
 	dt := max_dt
 	max_dt_dur := time.Second / time.Duration(app.refresh_rate())
 	dt_dur := max_dt_dur
 
-	tick: f32
-	frame: int
+	player: Entity
+	player_init(&player, polar_bear)
 
 	for app.running() {
 		start_tick := time.tick_now()
@@ -62,15 +142,13 @@ main :: proc() {
 		mem.set(raw_data(backbuffer), 255, size_of(u32) * len(backbuffer))
 		defer app.swap_buffers(backbuffer, GAME_WIDTH, GAME_HEIGHT)
 
-		tick += dt
-		if tick > POLAR_BEAR_FRAME_TIME {
-			tick = 0
-			frame += 1
-			if frame >= POLAR_BEAR_WALK_FRAME_COUNT {
-				frame = 0
-			}
-		}
-		draw_image_cropped(backbuffer, 50, 50, false, polar_bear, POLAR_BEAR_IDLE_FRAME_COUNT*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+		// ----- update -----
+		player_update(&player, dt)
+		// ------------------
+
+		// ----- draw -----
+		player_draw(backbuffer, &player)
+		// ----------------
 	}
 }
 
