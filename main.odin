@@ -188,6 +188,10 @@ main :: proc() {
 			if (app.gamepad_right_trigger(0) > 0.1 || app.gamepad_button_pressed(0, .Right_Shoulder)) && bullet.gen == 0 {
 				bullet.gen = 1
 				bullet.pos = player.pos
+				bullet.pos.y -= 16
+				if player.flip {
+					bullet.pos.x -= POLAR_BEAR_FRAME_WIDTH
+				}
 				bullet.vel.x = right_stick.x
 				bullet.vel.y = 1
 				bullet.vel = vclamp(bullet.vel, 1)
