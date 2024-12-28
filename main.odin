@@ -194,7 +194,8 @@ main :: proc() {
 				}
 				bullet.vel.x = right_stick.x
 				bullet.vel.y = 1
-				bullet.vel = vclamp(bullet.vel, 1)
+				bullet.vel *= 3
+				bullet.vel = vclamp(bullet.vel, 3)
 			}
 		}
 
