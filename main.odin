@@ -155,6 +155,8 @@ main :: proc() {
 
 	entities: [MAX_ENTITIES]Entity
 
+	bullet: Entity
+
 	for app.running() {
 		start_tick := time.tick_now()
 		defer {
@@ -173,10 +175,51 @@ main :: proc() {
 
 		// ----- update -----
 		player_update(&player, dt)
+
+		// spawn bullet
+		{
+			right_stick: [2]f32
+			if app.gamepad_connected(0) {
+				right_stick = app.gamepad_right_stick(0)
+			} else {
+				// mouse_x, mouse_y := app.mouse_position()
+				// TODO
+			}
+			if app.gamepad_right_trigger(0) > 0.1 || app.gamepad_button_pressed(0, .Right_Shoulder) && bullet.gen == 0 && right_stick.y < 0 {
+				bullet.gen = 1
+				bullet.pos = player.pos
+				bullet.vel = right_stick
+			}
+		}
+
+		// update bullet
+		if bullet.gen == 1 {
+			bullet.pos += bullet.vel
+			{
+				bullet.tick += dt
+				if bullet.tick > FLYING_CYCLE_FRAME_TIME {
+					bullet.tick = 0
+					bullet.frame += 1
+					if bullet.frame >= FLYING_CYCLE_FRAME_COUNT_LOOP {
+						bullet.frame = 0
+					}
+				}
+			}
+
+			if bullet.pos.y < 0 {
+				bullet.gen = 0
+			}
+		}
+
 		// ------------------
 
 		// ----- draw -----
 		player_draw(backbuffer, &player)
+
+		// draw bullet
+		if bullet.gen == 1 {
+			draw_image_cropped(backbuffer, bullet.x, bullet.y, false, spr_flying_cycle, FLYING_CYCLE_FRAME_COUNT_START*FLYING_CYCLE_FRAME_WIDTH + bullet.frame*FLYING_CYCLE_FRAME_WIDTH, 0, FLYING_CYCLE_FRAME_WIDTH, FLYING_CYCLE_FRAME_HEIGHT)
+		}
 		// ----------------
 	}
 }
