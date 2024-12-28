@@ -30,7 +30,7 @@ Entity :: struct {
 	tick: f32,
 	frame: int,
 	state: Entity_State,
-	sprite: ^png.Image,
+	spr: ^png.Image,
 }
 
 POLAR_BEAR_Y :: 0.0
@@ -41,7 +41,7 @@ POLAR_BEAR_FRAME_COUNT_IDLE :: 3
 POLAR_BEAR_FRAME_COUNT_WALK :: 4
 
 player_init :: proc(using player: ^Entity, s: ^png.Image) {
-	sprite = s
+	spr = s
 	x = f32(GAME_WIDTH/2 - POLAR_BEAR_FRAME_WIDTH/2)
 }
 
@@ -96,9 +96,9 @@ player_update :: proc(using player: ^Entity, dt: f32) {
 player_draw :: proc(backbuffer: []u32, using player: ^Entity) {
 	switch state {
 		case .Idle:
-			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, sprite, frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, spr, frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
 		case .Walk:
-			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, sprite, POLAR_BEAR_FRAME_COUNT_IDLE*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, spr, POLAR_BEAR_FRAME_COUNT_IDLE*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
 	}
 }
 
@@ -115,8 +115,11 @@ main :: proc() {
 	backbuffer := make([]u32, GAME_WIDTH * GAME_HEIGHT)
 
 	// https://rapidpunches.itch.io/polar-bear
-	polar_bear, err := png_load("sprites/polar_bear.png")
-	assert(err == nil)
+	spr_polar_bear := png_load("sprites/polar_bear.png") or_else panic("Failed to load polar_bear.png")
+
+	// https://msfrantz.itch.io/free-fire-ball-pixel-art
+	spr_explode := png_load("sprites/explode.png") or_else panic("Failed to load explode.png")
+	spr_flying_cycle := png_load("sprites/flying_cycle.png") or_else panic("Failed to load flying_cycle.png")
 
 	max_dt := 1.0/f32(app.refresh_rate())
 	dt := max_dt
@@ -124,7 +127,7 @@ main :: proc() {
 	dt_dur := max_dt_dur
 
 	player: Entity
-	player_init(&player, polar_bear)
+	player_init(&player, spr_polar_bear)
 
 	for app.running() {
 		start_tick := time.tick_now()
