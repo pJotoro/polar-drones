@@ -64,9 +64,10 @@ player_update :: proc(using player: ^Entity, dt: f32) {
 		left_stick.y += f32(i32(app.key_down(.Up)))
 	}
 
-	if left_stick.x > 0.0 {
+	DIR_THRESHOLD :: 0.3
+	if left_stick.x > DIR_THRESHOLD {
 		flip = false
-	} else if left_stick.x < 0.0 {
+	} else if left_stick.x < -DIR_THRESHOLD {
 		flip = true
 	}
 
@@ -80,20 +81,10 @@ player_update :: proc(using player: ^Entity, dt: f32) {
 		frame = 0
 	}
 
-	tick += abs(left_stick.x)*dt if left_stick.x != 0.0 else dt
-	if tick > POLAR_BEAR_FRAME_TIME {
-		tick = 0
-		frame += 1
-		frame_count: int
-		if .Idle in flags {
-			frame_count = POLAR_BEAR_FRAME_COUNT_IDLE
-		} else {
-			frame_count = POLAR_BEAR_FRAME_COUNT_WALK
-		}
-		if frame >= frame_count {
-			frame = 0
-		}
-	}
+	entity_anim_update(player, 
+		abs(left_stick.x)*dt if left_stick.x != 0.0 else dt, 
+		POLAR_BEAR_FRAME_TIME, 
+		POLAR_BEAR_FRAME_COUNT_IDLE if .Idle in flags else POLAR_BEAR_FRAME_COUNT_WALK)
 
 	VEL_X :: 10.0
 
@@ -105,6 +96,17 @@ player_draw :: proc(backbuffer: []u32, using player: ^Entity) {
 		draw_image_cropped(backbuffer, x, y, flip, spr, frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
 	} else {
 		draw_image_cropped(backbuffer, x, y, flip, spr, POLAR_BEAR_FRAME_COUNT_IDLE*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+	}
+}
+
+entity_anim_update :: proc(using entity: ^Entity, dt: f32, frame_time: f32, frame_count: int) {
+	tick += dt
+	if tick > frame_time {
+		tick = 0
+		frame += 1
+		if frame >= frame_count {
+			frame = 0
+		}
 	}
 }
 
@@ -202,17 +204,7 @@ main :: proc() {
 		// update bullet
 		if bullet.gen == 1 {
 			bullet.pos += bullet.vel
-			{
-				bullet.tick += dt
-				if bullet.tick > FLYING_CYCLE_FRAME_TIME {
-					bullet.tick = 0
-					bullet.frame += 1
-					if bullet.frame >= FLYING_CYCLE_FRAME_COUNT_LOOP {
-						bullet.frame = 0
-					}
-				}
-			}
-
+			entity_anim_update(&bullet, dt, FLYING_CYCLE_FRAME_TIME, FLYING_CYCLE_FRAME_COUNT_LOOP)
 			if (bullet.y-FLYING_CYCLE_FRAME_HEIGHT > GAME_HEIGHT) || (bullet.x+FLYING_CYCLE_FRAME_WIDTH < 0) || (bullet.x-FLYING_CYCLE_FRAME_WIDTH > GAME_WIDTH) {
 				bullet.gen = 0
 			}
