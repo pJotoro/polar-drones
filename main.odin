@@ -103,6 +103,19 @@ player_draw :: proc(backbuffer: []u32, using player: ^Entity) {
 	}
 }
 
+FLYING_CYCLE_FRAME_WIDTH :: 64
+FLYING_CYCLE_FRAME_HEIGHT :: 64
+FLYING_CYCLE_FRAME_TIME :: 0.25
+FLYING_CYCLE_FRAME_COUNT_START :: 3
+FLYING_CYCLE_FRAME_COUNT_LOOP :: 4
+
+EXPLODE_FRAME_WIDTH :: 64
+EXPLODE_FRAME_HEIGHT :: 64
+EXPLODE_FRAME_TIME :: 0.25
+EXPLODE_FRAME_COUNT :: 7
+
+
+
 main :: proc() {
 	spall_init("spall")
 	defer spall_uninit()
