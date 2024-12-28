@@ -3,6 +3,7 @@ package main
 import "jo:app"
 
 import "core:fmt"
+import "core:log"
 import "core:image/png"
 import "core:time"
 import "core:mem"
@@ -106,9 +107,14 @@ main :: proc() {
 	spall_init("spall")
 	defer spall_uninit()
 
-	when ODIN_OS == .Windows {
-		context.logger = create_debug_logger(.Warning, {.Level, .Terminal_Color, .Short_File_Path, .Line, .Procedure})
+	when ODIN_DEBUG {
+		when ODIN_OS == .Windows {
+			context.logger = create_debug_logger(.Debug, {.Level, .Terminal_Color, .Short_File_Path, .Line, .Procedure})
+		} else {
+			context.logger = log.create_console_logger(.Debug, {.Level, .Terminal_Color, .Short_File_Path, .Line, .Procedure})
+		}
 	}
+
 
 	app.init(title = "Odin Holiday Jam")
 
