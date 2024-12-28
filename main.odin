@@ -19,22 +19,29 @@ png_load :: proc($path: string) -> (^png.Image, png.Error) {
 	return png.load_from_bytes(data)
 }
 
-Entity_State :: enum {
+Entity_Flag :: enum {
 	Idle,
-	Walk,
+}
+
+Entity_Flags :: distinct bit_set[Entity_Flag]
+
+Entity_ID :: struct {
+	// idx: index in entity array
+	// gen: generation of entity
+	idx, gen: int,
 }
 
 Entity :: struct {
-	x: f32,
-	vel: f32,
+	gen: int,
+	using pos: [2]f32,
+	vel: [2]f32,
 	flip: bool,
 	tick: f32,
 	frame: int,
-	state: Entity_State,
+	flags: Entity_Flags,
 	spr: ^png.Image,
 }
 
-POLAR_BEAR_Y :: 0.0
 POLAR_BEAR_FRAME_WIDTH :: 32
 POLAR_BEAR_FRAME_HEIGHT :: 32
 POLAR_BEAR_FRAME_TIME :: 0.25
@@ -63,12 +70,12 @@ player_update :: proc(using player: ^Entity, dt: f32) {
 		flip = true
 	}
 
-	if left_stick.x == 0 && state != .Idle {
-		state = .Idle
+	if left_stick.x == 0 && .Idle not_in flags {
+		flags += {.Idle}
 		tick = 0
 		frame = 0
-	} else if left_stick.x != 0 && state != .Walk {
-		state = .Walk
+	} else if left_stick.x != 0 && .Idle in flags {
+		flags -= {.Idle}
 		tick = 0
 		frame = 0
 	}
@@ -78,11 +85,10 @@ player_update :: proc(using player: ^Entity, dt: f32) {
 		tick = 0
 		frame += 1
 		frame_count: int
-		switch state {
-			case .Idle:
-				frame_count = POLAR_BEAR_FRAME_COUNT_IDLE
-			case .Walk:
-				frame_count = POLAR_BEAR_FRAME_COUNT_WALK
+		if .Idle in flags {
+			frame_count = POLAR_BEAR_FRAME_COUNT_IDLE
+		} else {
+			frame_count = POLAR_BEAR_FRAME_COUNT_WALK
 		}
 		if frame >= frame_count {
 			frame = 0
@@ -95,11 +101,10 @@ player_update :: proc(using player: ^Entity, dt: f32) {
 }
 
 player_draw :: proc(backbuffer: []u32, using player: ^Entity) {
-	switch state {
-		case .Idle:
-			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, spr, frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
-		case .Walk:
-			draw_image_cropped(backbuffer, x, POLAR_BEAR_Y, flip, spr, POLAR_BEAR_FRAME_COUNT_IDLE*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+	if .Idle in flags {
+		draw_image_cropped(backbuffer, x, y, flip, spr, frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
+	} else {
+		draw_image_cropped(backbuffer, x, y, flip, spr, POLAR_BEAR_FRAME_COUNT_IDLE*POLAR_BEAR_FRAME_WIDTH + frame*POLAR_BEAR_FRAME_WIDTH, 0, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT)
 	}
 }
 
@@ -114,7 +119,7 @@ EXPLODE_FRAME_HEIGHT :: 64
 EXPLODE_FRAME_TIME :: 0.25
 EXPLODE_FRAME_COUNT :: 7
 
-
+MAX_ENTITIES :: 4096
 
 main :: proc() {
 	spall_init("spall")
@@ -147,6 +152,8 @@ main :: proc() {
 
 	player: Entity
 	player_init(&player, spr_polar_bear)
+
+	entities: [MAX_ENTITIES]Entity
 
 	for app.running() {
 		start_tick := time.tick_now()
