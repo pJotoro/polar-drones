@@ -11,9 +11,6 @@ import "core:slice"
 import "core:math"
 import "core:math/linalg"
 
-GAME_WIDTH :: 384
-GAME_HEIGHT :: 216
-
 png_load :: proc($path: string) -> (^png.Image, png.Error) {
 	data := #load(path)
 	return png.load_from_bytes(data)
@@ -41,12 +38,6 @@ Entity :: struct {
 	flags: Entity_Flags,
 	spr: ^png.Image,
 }
-
-POLAR_BEAR_FRAME_WIDTH :: 32
-POLAR_BEAR_FRAME_HEIGHT :: 32
-POLAR_BEAR_FRAME_TIME :: 0.25
-POLAR_BEAR_FRAME_COUNT_IDLE :: 3
-POLAR_BEAR_FRAME_COUNT_WALK :: 4
 
 player_init :: proc(using player: ^Entity, s: ^png.Image) {
 	spr = s
@@ -110,19 +101,6 @@ entity_anim_update :: proc(using entity: ^Entity, dt: f32, frame_time: f32, fram
 	}
 }
 
-FLYING_CYCLE_FRAME_WIDTH :: 32
-FLYING_CYCLE_FRAME_HEIGHT :: 32
-FLYING_CYCLE_FRAME_TIME :: 0.1
-FLYING_CYCLE_FRAME_COUNT_START :: 3
-FLYING_CYCLE_FRAME_COUNT_LOOP :: 4
-
-EXPLODE_FRAME_WIDTH :: 64
-EXPLODE_FRAME_HEIGHT :: 64
-EXPLODE_FRAME_TIME :: 0.25
-EXPLODE_FRAME_COUNT :: 7
-
-MAX_ENTITIES :: 4096
-
 main :: proc() {
 	spall_init("spall")
 	defer spall_uninit()
@@ -134,7 +112,6 @@ main :: proc() {
 			context.logger = log.create_console_logger(.Debug, {.Level, .Terminal_Color, .Short_File_Path, .Line, .Procedure})
 		}
 	}
-
 
 	app.init(title = "Odin Holiday Jam")
 
@@ -195,6 +172,8 @@ main :: proc() {
 				if player.flip {
 					bullet.pos.x -= POLAR_BEAR_FRAME_WIDTH
 				}
+
+				// TODO: Something doesn't feel right about aiming.
 				bullet.vel = right_stick
 				bullet.vel = vclamp(bullet.vel, 1)
 				bullet.vel *= 3
