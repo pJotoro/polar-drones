@@ -110,7 +110,7 @@ player_draw :: proc(backbuffer: []u32, using player: ^Entity) {
 
 FLYING_CYCLE_FRAME_WIDTH :: 64
 FLYING_CYCLE_FRAME_HEIGHT :: 64
-FLYING_CYCLE_FRAME_TIME :: 0.25
+FLYING_CYCLE_FRAME_TIME :: 0.1
 FLYING_CYCLE_FRAME_COUNT_START :: 3
 FLYING_CYCLE_FRAME_COUNT_LOOP :: 4
 
@@ -185,10 +185,12 @@ main :: proc() {
 				// mouse_x, mouse_y := app.mouse_position()
 				// TODO
 			}
-			if app.gamepad_right_trigger(0) > 0.1 || app.gamepad_button_pressed(0, .Right_Shoulder) && bullet.gen == 0 && right_stick.y < 0 {
+			if (app.gamepad_right_trigger(0) > 0.1 || app.gamepad_button_pressed(0, .Right_Shoulder)) && bullet.gen == 0 {
 				bullet.gen = 1
 				bullet.pos = player.pos
-				bullet.vel = right_stick
+				bullet.vel.x = right_stick.x
+				bullet.vel.y = 1
+				bullet.vel = vclamp(bullet.vel, 1)
 			}
 		}
 
@@ -206,7 +208,7 @@ main :: proc() {
 				}
 			}
 
-			if bullet.pos.y < 0 {
+			if bullet.pos.y > GAME_HEIGHT || bullet.x+f32(spr_flying_cycle.width) < 0 || bullet.x > GAME_WIDTH {
 				bullet.gen = 0
 			}
 		}
