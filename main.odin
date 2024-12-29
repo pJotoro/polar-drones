@@ -162,7 +162,7 @@ main :: proc() {
 		}
 	}
 
-	app.init(title = "Odin Holiday Jam")
+	app.init(title = "Polar Drones")
 
 	game: Game
 
