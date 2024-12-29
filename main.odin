@@ -10,6 +10,7 @@ import "core:mem"
 import "core:slice"
 import "core:math"
 import "core:math/linalg"
+import "core:math/rand"
 
 png_load :: proc($path: string) -> (^png.Image, png.Error) {
 	data := #load(path)
@@ -17,7 +18,11 @@ png_load :: proc($path: string) -> (^png.Image, png.Error) {
 }
 
 Entity_Flag :: enum {
+	Active,
 	Idle,
+	Projectile,
+	Hostile,
+	Flying,
 }
 
 Entity_Flags :: distinct bit_set[Entity_Flag]
@@ -101,6 +106,50 @@ entity_anim_update :: proc(using entity: ^Entity, dt: f32, frame_time: f32, fram
 	}
 }
 
+Game :: struct {
+	spr_polar_bear, spr_explode, spr_flying_cycle, spr_drone: ^png.Image,
+	dt: f32,
+	player: Entity,
+	entities: [MAX_ENTITIES]Entity,
+	entity_count: int,
+	fireball_count: int,
+	backbuffer: []u32,
+	drone_spawn_time: f32,
+}
+
+create_entity :: proc(using game: ^Game, new_entity: Entity) -> ^Entity {
+	assert(entity_count - 1 < MAX_ENTITIES, "Too many entities")
+	for &entity, entity_idx in entities {
+		if .Active not_in entity.flags {
+			new_gen := entity.gen + 1
+			entity = new_entity
+			entity.gen = new_gen
+			entity.flags += {.Active}
+			entity_count += 1
+			return &entity
+		}
+	}
+	panic("failed to create entity")
+}
+
+destroy_entity :: proc(using game: ^Game, entity: ^Entity) {
+	entity.flags -= {.Active}
+	game.entity_count -= 1
+}
+
+entity_active :: proc(using entity: Entity) -> bool {
+	return .Active in flags
+}
+
+game_reset :: proc(using game: ^Game) {
+	player_init(&game.player, game.spr_polar_bear)
+	game.drone_spawn_time = 3
+	game.entity_count = 0
+	game.fireball_count = 0
+
+	mem.set(raw_data(game.entities[:]), 0, len(game.entities) * size_of(Entity))
+}
+
 main :: proc() {
 	spall_init("spall")
 	defer spall_uninit()
@@ -115,26 +164,28 @@ main :: proc() {
 
 	app.init(title = "Odin Holiday Jam")
 
-	backbuffer := make([]u32, GAME_WIDTH * GAME_HEIGHT)
+	game: Game
+
+	game.backbuffer = make([]u32, GAME_WIDTH * GAME_HEIGHT)
 
 	// https://rapidpunches.itch.io/polar-bear
-	spr_polar_bear := png_load("sprites/polar_bear.png") or_else panic("Failed to load polar_bear.png")
+	game.spr_polar_bear = png_load("sprites/polar_bear.png") or_else panic("Failed to load polar_bear.png")
 
 	// https://msfrantz.itch.io/free-fire-ball-pixel-art
-	spr_explode := png_load("sprites/explode.png") or_else panic("Failed to load explode.png")
-	spr_flying_cycle := png_load("sprites/flying_cycle.png") or_else panic("Failed to load flying_cycle.png")
+	game.spr_explode = png_load("sprites/explode.png") or_else panic("Failed to load explode.png")
+	game.spr_flying_cycle = png_load("sprites/flying_cycle.png") or_else panic("Failed to load flying_cycle.png")
+
+	// made by me
+	game.spr_drone = png_load("sprites/drone.png") or_else panic("Failed to load drone.png")
 
 	max_dt := 1.0/f32(app.refresh_rate())
-	dt := max_dt
+	game.dt = max_dt
 	max_dt_dur := time.Second / time.Duration(app.refresh_rate())
 	dt_dur := max_dt_dur
 
-	player: Entity
-	player_init(&player, spr_polar_bear)
+	player_init(&game.player, game.spr_polar_bear)
 
-	entities: [MAX_ENTITIES]Entity
-
-	bullet: Entity
+	game.drone_spawn_time = 3
 
 	for app.running() {
 		start_tick := time.tick_now()
@@ -143,19 +194,19 @@ main :: proc() {
 			dt_dur = time.tick_diff(start_tick, end_tick)
 			if dt_dur < max_dt_dur {
 				sleep(max_dt_dur - dt_dur)
-				dt = max_dt
+				game.dt = max_dt
 			} else {
-				dt = f32(dt_dur)/f32(time.Second)
+				game.dt = f32(dt_dur)/f32(time.Second)
 			}
 		}
 
-		mem.set(raw_data(backbuffer), 255, size_of(u32) * len(backbuffer))
-		defer app.swap_buffers(backbuffer, GAME_WIDTH, GAME_HEIGHT)
+		mem.set(raw_data(game.backbuffer), 255, size_of(u32) * len(game.backbuffer))
+		defer app.swap_buffers(game.backbuffer, GAME_WIDTH, GAME_HEIGHT)
 
-		// ----- update -----
-		player_update(&player, dt)
+		player_update(&game.player, game.dt)
+		player_draw(game.backbuffer, &game.player)
 
-		// spawn bullet
+		// spawn fireball
 		{
 			right_stick: [2]f32
 			if app.gamepad_connected(0) {
@@ -164,42 +215,130 @@ main :: proc() {
 				// mouse_x, mouse_y := app.mouse_position()
 				// TODO
 			}
-			if (app.gamepad_right_trigger(0) > 0.1 || app.gamepad_button_pressed(0, .Right_Shoulder)) && bullet.gen == 0 && right_stick.y > 0 {
-				bullet.gen = 1
-				bullet.pos = player.pos
-				bullet.pos.x += 16
-				bullet.pos.y -= 8
-				if player.flip {
-					bullet.pos.x -= POLAR_BEAR_FRAME_WIDTH
+			if app.gamepad_button_pressed(0, .Right_Shoulder) && linalg.length(right_stick) > 0.8 && game.fireball_count < 3 {
+				fireball := Entity {
+					pos = {game.player.x + POLAR_BEAR_FRAME_WIDTH/2 if !game.player.flip else game.player.x - POLAR_BEAR_FRAME_WIDTH/2, game.player.y - 8},
+					vel = right_stick * 2, // TODO: Something doesn't feel right about aiming.
+					flags = {.Projectile},
 				}
-
-				// TODO: Something doesn't feel right about aiming.
-				bullet.vel = right_stick
-				bullet.vel = vclamp(bullet.vel, 1)
-				bullet.vel *= 3
+				create_entity(&game, fireball)
+				game.fireball_count += 1
 			}
 		}
 
-		// update bullet
-		if bullet.gen == 1 {
-			bullet.pos += bullet.vel
-			entity_anim_update(&bullet, dt, FLYING_CYCLE_FRAME_TIME, FLYING_CYCLE_FRAME_COUNT_LOOP)
-			if (bullet.y-FLYING_CYCLE_FRAME_HEIGHT > GAME_HEIGHT) || (bullet.x+FLYING_CYCLE_FRAME_WIDTH < 0) || (bullet.x-FLYING_CYCLE_FRAME_WIDTH > GAME_WIDTH) {
-				bullet.gen = 0
+		// spawn drone
+		{
+			game.drone_spawn_time -= game.dt
+			if game.drone_spawn_time <= 0 {
+				game.drone_spawn_time = rand.float32_range(1, 5)
+				right := rand.choice([]bool{false, true})
+				drone: Entity
+				drone.x = 1 if right else GAME_WIDTH - 1
+				drone.y = rand.float32_range(GAME_HEIGHT - DRONE_FRAME_HEIGHT*2, GAME_HEIGHT - DRONE_FRAME_HEIGHT)
+				drone.vel.x = rand.float32_range(0.1, 1)
+				if !right {
+					drone.vel.x = -drone.vel.x
+				}
+				drone.tick = 1
+				drone.flags = {.Hostile, .Flying}
+				create_entity(&game, drone)
 			}
 		}
 
-		// ------------------
+		game_loop: for &entity, entity_idx in game.entities {
+			if entity_idx >= game.entity_count {
+				break
+			}
 
-		// ----- draw -----
-		player_draw(backbuffer, &player)
+			using entity
+			if .Active in flags {
+				pos += vel
 
-		// draw bullet
-		if bullet.gen == 1 {
-			draw_image_cropped(backbuffer, bullet.x, bullet.y, false, spr_flying_cycle, FLYING_CYCLE_FRAME_COUNT_START*FLYING_CYCLE_FRAME_WIDTH + bullet.frame*FLYING_CYCLE_FRAME_WIDTH, 0, FLYING_CYCLE_FRAME_WIDTH, FLYING_CYCLE_FRAME_HEIGHT)
+				if .Projectile in flags && .Hostile not_in flags {
+					entity_anim_update(&entity, game.dt, FLYING_CYCLE_FRAME_TIME, FLYING_CYCLE_FRAME_COUNT_LOOP)
+					if (y-FLYING_CYCLE_FRAME_HEIGHT > GAME_HEIGHT) || (x+FLYING_CYCLE_FRAME_WIDTH < 0) || (x-FLYING_CYCLE_FRAME_WIDTH > GAME_WIDTH) {
+						destroy_entity(&game, &entity)
+						game.fireball_count -= 1
+					} else {
+						draw_image_cropped(game.backbuffer, x, y, false, game.spr_flying_cycle, FLYING_CYCLE_FRAME_COUNT_START*FLYING_CYCLE_FRAME_WIDTH + frame*FLYING_CYCLE_FRAME_WIDTH, 0, FLYING_CYCLE_FRAME_WIDTH, FLYING_CYCLE_FRAME_HEIGHT)
+					}
+				}
+				else if .Hostile in flags && .Flying in flags {
+					if (x+DRONE_FRAME_WIDTH < 0) || (x-DRONE_FRAME_WIDTH > GAME_WIDTH) {
+						destroy_entity(&game, &entity)
+					} else {
+						tick -= game.dt
+						if tick <= 0 {
+							tick = 1
+							laser: Entity
+							laser.pos = pos
+							laser.y -= 5
+							laser.vel.y = -0.5
+							laser.flags = {.Projectile, .Hostile}
+							create_entity(&game, laser)
+							laser.x = pos.x + 20
+							create_entity(&game, laser)
+						}
+						draw_image(game.backbuffer, x, y, false, game.spr_drone)
+					}
+				}
+				else if .Projectile in flags && .Hostile in flags {
+					if y + LASER_HEIGHT < 0 {
+						destroy_entity(&game, &entity)
+					} else {
+						if collision_recs(x, y, LASER_WIDTH, LASER_HEIGHT, game.player.x, game.player.y, POLAR_BEAR_FRAME_WIDTH, POLAR_BEAR_FRAME_HEIGHT) {
+							game_reset(&game)
+							break game_loop
+						}
+
+						draw_rectangle(game.backbuffer, x, y, LASER_WIDTH, LASER_HEIGHT, 0x00FF0000)
+					}
+				}
+			}
 		}
-		// ----------------
+
+		fireball_loop: for &fireball, fireball_idx in game.entities {
+			if fireball_idx >= game.entity_count {
+				break
+			}
+			if !entity_active(fireball) {
+				continue
+			}
+
+			if .Projectile in fireball.flags && .Hostile not_in fireball.flags {
+				for &entity, entity_idx in game.entities {
+					if entity_idx >= game.entity_count {
+						break
+					}
+					if !entity_active(entity) {
+						continue
+					}
+
+					if .Hostile in entity.flags {
+						if .Projectile in entity.flags {
+							if collision_recs(fireball.x+FLYING_CYCLE_FRAME_WIDTH/2, fireball.y+FLYING_CYCLE_FRAME_HEIGHT/2, FLYING_CYCLE_FRAME_WIDTH/2, FLYING_CYCLE_FRAME_HEIGHT/2, entity.x, entity.y, LASER_WIDTH, LASER_HEIGHT) {
+								destroy_entity(&game, &fireball)
+								destroy_entity(&game, &entity)
+								game.fireball_count -= 1
+								continue fireball_loop
+							}
+						} else {
+							if collision_recs(fireball.x+FLYING_CYCLE_FRAME_WIDTH/2, fireball.y+FLYING_CYCLE_FRAME_HEIGHT/2, FLYING_CYCLE_FRAME_WIDTH/2, FLYING_CYCLE_FRAME_HEIGHT/2, entity.x, entity.y, DRONE_FRAME_WIDTH, DRONE_FRAME_HEIGHT) {
+								destroy_entity(&game, &fireball)
+								destroy_entity(&game, &entity)
+								game.fireball_count -= 1
+								continue fireball_loop
+							}
+						}
+					}
+				}
+			}
+		}
 	}
+}
+
+collision_recs :: #force_inline proc "contextless" (x0, y0, w0, h0, x1, y1, w1, h1: f32) -> bool {
+	return x0+w0 >= x1 && x0 <= x1 + w1 && y0 + w0 >= y1 && y0 <= y1 + h1
 }
 
 draw_rectangle_int :: proc(backbuffer: []u32, x, y, width, height: int, color: u32) {
